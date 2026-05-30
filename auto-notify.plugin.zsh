@@ -34,6 +34,9 @@ export AUTO_NOTIFY_VERSION="0.11.1"
         'nano'
     )
 
+[[ -z "$AUTO_NOTIFY_ACCEPTED_EXIT" ]] &&
+    export AUTO_NOTIFY_ACCEPTED_EXIT=()
+
 function _auto_notify_format() {
     local MESSAGE="$1"
     local command="$2"
@@ -49,6 +52,7 @@ function _auto_notify_message() {
     local command="$1"
     local elapsed="$2"
     local exit_code="$3"
+    local command_full="$4"
     local platform="$(uname)"
     # Run using echo -e in order to make sure notify-send picks up new line
     local DEFAULT_TITLE="\"%command\" Completed"
@@ -73,14 +77,12 @@ function _auto_notify_message() {
         local icon="${AUTO_NOTIFY_ICON_SUCCESS:-""}"
 
         # Handle specific exit codes
-        if [[ "$exit_code" -eq 130 ]]; then
-            urgency="critical"
-            transient="--hint=int:transient:1"
-            icon="${AUTO_NOTIFY_ICON_FAILURE:-""}"
-        elif [[ "$exit_code" -ne 0 ]]; then
-            # For all other non-zero exit codes, mark the notification as critical.
+        if [[ "$exit_code" -ne 0 ]] && [[ "$(_is_auto_notify_accepted_exit "$command_full" "$exit_code")" != "yes" ]]; then
             urgency="critical"
             icon="${AUTO_NOTIFY_ICON_FAILURE:-""}"
+            if [[ "$exit_code" -eq 130 ]]; then
+                transient="--hint=int:transient:1"
+            fi
         fi
 
         local arguments=("$title" "$body" "--app-name=zsh" "$transient" "--urgency=$urgency" "--expire-time=$AUTO_NOTIFY_EXPIRE_TIME")
@@ -117,23 +119,28 @@ function _auto_notify_message() {
     fi
 }
 
-function _is_auto_notify_ignored() {
+function _auto_notify_target_command() {
     local command="$1"
     # split the command if its been piped one or more times
     local command_list=("${(@s/|/)command}")
     local target_command="${command_list[-1]}"
     # Remove leading whitespace
     target_command="$(echo "$target_command" | sed -e 's/^ *//')"
+    # Remove sudo prefix from command if detected
+    if [[ "$target_command" == "sudo "* ]]; then
+        target_command="${target_command/sudo /}"
+    fi
+    printf "%s" "$target_command"
+}
+
+function _is_auto_notify_ignored() {
+    local command="$1"
+    local target_command="$(_auto_notify_target_command "$command")"
 
     # Ignore the command if running over SSH and AUTO_NOTIFY_ENABLE_SSH is disabled
     if [[ -n ${SSH_CLIENT-} || -n ${SSH_TTY-} || -n ${SSH_CONNECTION-} ]] && [[ "${AUTO_NOTIFY_ENABLE_SSH-1}" == "0" ]]; then
         print "yes"
         return
-    fi
-
-    # Remove sudo prefix from command if detected
-    if [[ "$target_command" == "sudo "* ]]; then
-        target_command="${target_command/sudo /}"
     fi
 
     # If AUTO_NOTIFY_WHITELIST is defined, then auto-notify will ignore
@@ -160,6 +167,30 @@ function _is_auto_notify_ignored() {
     fi
 }
 
+function _is_auto_notify_accepted_exit() {
+    local command="$1"
+    local exit_code="$2"
+    local target_command="$(_auto_notify_target_command "$command")"
+
+    for entry in $AUTO_NOTIFY_ACCEPTED_EXIT; do
+        local parts=("${(@s/:/)entry}")
+        local pattern="${parts[1]}"
+        # Skip empty patterns so a malformed entry does not match every command
+        [[ -z "$pattern" ]] && continue
+
+        if [[ "$target_command" == "$pattern"* ]]; then
+            for accepted_code in "${parts[@]:1}"; do
+                if [[ "$exit_code" -eq "$accepted_code" ]]; then
+                    print "yes"
+                    return
+                fi
+            done
+        fi
+    done
+
+    print "no"
+}
+
 function _auto_notify_send() {
     # Immediately store the exit code before it goes away
     local exit_code="$?"
@@ -173,7 +204,7 @@ function _auto_notify_send() {
         let "elapsed = current - AUTO_COMMAND_START"
 
         if [[ $elapsed -gt $AUTO_NOTIFY_THRESHOLD ]]; then
-            _auto_notify_message "$AUTO_COMMAND" "$elapsed" "$exit_code"
+            _auto_notify_message "$AUTO_COMMAND" "$elapsed" "$exit_code" "$AUTO_COMMAND_FULL"
         fi
     fi
 

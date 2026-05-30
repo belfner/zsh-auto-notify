@@ -157,3 +157,47 @@
     assert "$lines[1]" same_as 'Notification Title: doom -i has completed in 45s yo'
     assert "$lines[2]" same_as "Notification Body: doom -i exited with code 0"
 }
+
+@test 'auto-notify-message uses normal urgency for accepted exit code' {
+    AUTO_NOTIFY_EXPIRE_TIME=8000
+    AUTO_NOTIFY_ENABLE_TRANSIENT=1
+    AUTO_NOTIFY_ACCEPTED_EXIT=("grep:1")
+
+    run _auto_notify_message "grep foo" "20" "1" "grep foo"
+
+    assert $state equals 0
+    assert "$lines[4]" same_as "--app-name=zsh --hint=int:transient:1 --urgency=normal --expire-time=8000"
+}
+
+@test 'auto-notify-message uses critical urgency for non-accepted exit code' {
+    AUTO_NOTIFY_EXPIRE_TIME=8000
+    AUTO_NOTIFY_ENABLE_TRANSIENT=1
+    AUTO_NOTIFY_ACCEPTED_EXIT=("grep:1")
+
+    run _auto_notify_message "grep foo" "20" "2" "grep foo"
+
+    assert $state equals 0
+    assert "$lines[4]" same_as "--app-name=zsh --hint=int:transient:1 --urgency=critical --expire-time=8000"
+}
+
+@test 'auto-notify-message uses normal urgency for accepted exit code 130' {
+    AUTO_NOTIFY_EXPIRE_TIME=8000
+    AUTO_NOTIFY_ENABLE_TRANSIENT=1
+    AUTO_NOTIFY_ACCEPTED_EXIT=("myapp:130")
+
+    run _auto_notify_message "myapp" "20" "130" "myapp"
+
+    assert $state equals 0
+    assert "$lines[4]" same_as "--app-name=zsh --hint=int:transient:1 --urgency=normal --expire-time=8000"
+}
+
+@test 'auto-notify-message uses critical urgency and transient for non-accepted exit code 130' {
+    AUTO_NOTIFY_EXPIRE_TIME=8000
+    AUTO_NOTIFY_ENABLE_TRANSIENT=0
+    AUTO_NOTIFY_ACCEPTED_EXIT=("grep:1")
+
+    run _auto_notify_message "myapp" "20" "130" "myapp"
+
+    assert $state equals 0
+    assert "$lines[4]" same_as "--app-name=zsh --hint=int:transient:1 --urgency=critical --expire-time=8000"
+}

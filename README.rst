@@ -201,6 +201,24 @@ If you wish to have an icon displayed on command success and/or failure, you can
     export AUTO_NOTIFY_ICON_SUCCESS=/path/to/success/icon.png
     export AUTO_NOTIFY_ICON_FAILURE=/path/to/failure/icon.png
 
+**Accepted Exit Codes**
+
+Some commands use non-zero exit codes to indicate results rather than errors. For example,
+``grep`` returns 1 when no matches are found. By default, non-zero exit codes trigger
+critical urgency notifications that must be manually dismissed. You can configure specific
+commands with acceptable exit codes using ``AUTO_NOTIFY_ACCEPTED_EXIT``. The format is
+``"command:code1:code2:..."`` where the command is matched the same way as ``AUTO_NOTIFY_IGNORE``:
+the final segment of a piped command, prefix matched, with a leading ``sudo`` removed.
+
+::
+
+    # grep returns 1 when no matches are found
+    AUTO_NOTIFY_ACCEPTED_EXIT=("grep:1")
+
+    # diff returns 1 for differences found, 2 for trouble
+    AUTO_NOTIFY_ACCEPTED_EXIT+=("diff:1:2")
+
+NOTE: This configuration option currently only works for Linux.
 
 
 Temporarily Disabling Notifications

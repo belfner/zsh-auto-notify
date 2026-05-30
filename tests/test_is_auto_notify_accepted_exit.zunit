@@ -1,0 +1,109 @@
+#!/usr/bin/env zunit
+
+@setup {
+    load "../auto-notify.plugin.zsh"
+}
+
+@test 'is_auto_notify_accepted_exit - returns no when AUTO_NOTIFY_ACCEPTED_EXIT is empty' {
+    AUTO_NOTIFY_ACCEPTED_EXIT=()
+
+    run _is_auto_notify_accepted_exit "grep foo" "1"
+
+    assert $state equals 0
+    assert "$output" same_as "no"
+}
+
+@test 'is_auto_notify_accepted_exit - returns yes for matching command and exit code' {
+    AUTO_NOTIFY_ACCEPTED_EXIT=("grep:1")
+
+    run _is_auto_notify_accepted_exit "grep foo" "1"
+
+    assert $state equals 0
+    assert "$output" same_as "yes"
+}
+
+@test 'is_auto_notify_accepted_exit - returns no for matching command with different exit code' {
+    AUTO_NOTIFY_ACCEPTED_EXIT=("grep:1")
+
+    run _is_auto_notify_accepted_exit "grep foo" "2"
+
+    assert $state equals 0
+    assert "$output" same_as "no"
+}
+
+@test 'is_auto_notify_accepted_exit - returns no for non-matching command' {
+    AUTO_NOTIFY_ACCEPTED_EXIT=("grep:1")
+
+    run _is_auto_notify_accepted_exit "curl http://example.com" "1"
+
+    assert $state equals 0
+    assert "$output" same_as "no"
+}
+
+@test 'is_auto_notify_accepted_exit - multiple exit codes per command' {
+    AUTO_NOTIFY_ACCEPTED_EXIT=("diff:1:2")
+
+    run _is_auto_notify_accepted_exit "diff file1 file2" "1"
+    assert $state equals 0
+    assert "$output" same_as "yes"
+
+    run _is_auto_notify_accepted_exit "diff file1 file2" "2"
+    assert $state equals 0
+    assert "$output" same_as "yes"
+
+    run _is_auto_notify_accepted_exit "diff file1 file2" "3"
+    assert $state equals 0
+    assert "$output" same_as "no"
+}
+
+@test 'is_auto_notify_accepted_exit - multiple entries in array' {
+    AUTO_NOTIFY_ACCEPTED_EXIT=("grep:1" "curl:6:7:28")
+
+    run _is_auto_notify_accepted_exit "grep foo" "1"
+    assert $state equals 0
+    assert "$output" same_as "yes"
+
+    run _is_auto_notify_accepted_exit "curl http://example.com" "28"
+    assert $state equals 0
+    assert "$output" same_as "yes"
+
+    run _is_auto_notify_accepted_exit "curl http://example.com" "1"
+    assert $state equals 0
+    assert "$output" same_as "no"
+}
+
+@test 'is_auto_notify_accepted_exit - piped commands matches last segment' {
+    AUTO_NOTIFY_ACCEPTED_EXIT=("grep:1")
+
+    run _is_auto_notify_accepted_exit "cat file.txt | grep foo" "1"
+
+    assert $state equals 0
+    assert "$output" same_as "yes"
+}
+
+@test 'is_auto_notify_accepted_exit - sudo prefix stripping' {
+    AUTO_NOTIFY_ACCEPTED_EXIT=("grep:1")
+
+    run _is_auto_notify_accepted_exit "sudo grep foo" "1"
+
+    assert $state equals 0
+    assert "$output" same_as "yes"
+}
+
+@test 'is_auto_notify_accepted_exit - prefix matching' {
+    AUTO_NOTIFY_ACCEPTED_EXIT=("git commit:1")
+
+    run _is_auto_notify_accepted_exit "git commit -m msg" "1"
+
+    assert $state equals 0
+    assert "$output" same_as "yes"
+}
+
+@test 'is_auto_notify_accepted_exit - empty pattern does not match every command' {
+    AUTO_NOTIFY_ACCEPTED_EXIT=(":1")
+
+    run _is_auto_notify_accepted_exit "grep foo" "1"
+
+    assert $state equals 0
+    assert "$output" same_as "no"
+}
